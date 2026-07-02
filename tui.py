@@ -47,14 +47,14 @@ class RealBackend:
         return await core.pair_device(address, passkey, bus=bus)
 
     async def transact(self, address, *, offset=None, fan=None):
-        """Connect once; optionally write offset/fan; always read back (offset, fan)."""
+        """Connect once; optionally write offset/fan; always read back (offset, fan, temp)."""
         async with BleakClient(address, timeout=core.CONNECT_TIMEOUT) as c:
             if offset is not None:
                 await core.write_register(c, core.REG_OFFSET, core.clamp_offset(offset))
             if fan is not None:
                 await core.set_fan(c, fan)
             state = await core.read_state(c)
-            return core.offset_of(state), core.fan_of(state)
+            return core.offset_of(state), core.fan_of(state), core.temp_of(state)
 
 
 # --------------------------------------------------------------------------- #
@@ -73,6 +73,7 @@ class Device:
     selected: bool = False
     live_offset: float | None = None
     live_fan: str | None = None
+    live_temp: float | None = None
     last_read: float | None = None
     busy: bool = False
     status: str = ""
@@ -172,11 +173,12 @@ class RenameModal(ModalScreen[str | None]):
 # app
 # --------------------------------------------------------------------------- #
 # (label, fixed width) — fixed so cell updates never clip (e.g. "speed 3" in fan).
-# offset & fan come right after the name so they stay visible on narrow terminals;
+# temp/offset/fan come right after the name so they stay visible on narrow terminals;
 # the long address is pushed to the end.
 COLSPEC = [
     ("sel", 3),
     ("unit / nickname", 27),
+    ("temp", 7),
     ("offset", 7),
     ("fan", 9),
     ("bond", 9),
@@ -300,8 +302,9 @@ class DistechRemoteApp(App):
                 d.busy = True
                 d.status = "reading…"
                 try:
-                    off, fan = await self.backend.transact(d.address)
-                    d.live_offset, d.live_fan, d.last_read = off, fan, time.monotonic()
+                    off, fan, temp = await self.backend.transact(d.address)
+                    d.live_offset, d.live_fan, d.live_temp = off, fan, temp
+                    d.last_read = time.monotonic()
                     d.status = "read ✓"
                 except Exception:  # noqa: BLE001
                     d.status = "read failed"
@@ -402,10 +405,11 @@ class DistechRemoteApp(App):
         # NB: cells are Text (not str) so DataTable does NOT run Rich markup / emoji
         # substitution on them — otherwise "[x]" vanishes and ":AB:" becomes 🆎.
         rssi = "····" if d.is_stale(now) else f"{d.rssi_bar()} {d.rssi}"
-        # order must match COLSPEC: sel, name, offset, fan, bond, rssi, conn, address, status
+        # order must match COLSPEC: sel, name, temp, offset, fan, bond, rssi, conn, address, status
         return [
             Text("✔", style="bold green") if d.selected else Text("·", style="dim"),
             Text(d.display_name(full=self.widened)),
+            Text("—" if d.live_temp is None else f"{d.live_temp:.1f}°"),
             Text("—" if d.live_offset is None else f"{d.live_offset:+.1f}"),
             Text(core.describe_fan(d.live_fan) if d.live_fan is not None else "—"),
             Text("✔ bonded", style="green") if d.bonded else Text("✎ pair", style="yellow"),
@@ -605,8 +609,9 @@ class DistechRemoteApp(App):
         d.status = "reading…"
         try:
             async with self._radio_session():
-                off, fan = await self.backend.transact(addr)
-            d.live_offset, d.live_fan, d.last_read = off, fan, time.monotonic()
+                off, fan, temp = await self.backend.transact(addr)
+            d.live_offset, d.live_fan, d.live_temp = off, fan, temp
+            d.last_read = time.monotonic()
             d.status = "read ✓"
         except Exception as e:  # noqa: BLE001
             d.status = "read failed"
@@ -638,8 +643,9 @@ class DistechRemoteApp(App):
                 d.status = "connecting…"
                 try:
                     d.status = "writing…"
-                    off, fanv = await self.backend.transact(d.address, offset=offset, fan=fan)
-                    d.live_offset, d.live_fan, d.last_read = off, fanv, time.monotonic()
+                    off, fanv, temp = await self.backend.transact(d.address, offset=offset, fan=fan)
+                    d.live_offset, d.live_fan, d.live_temp = off, fanv, temp
+                    d.last_read = time.monotonic()
                     good = True
                     if offset is not None and (off is None or abs(off - core.clamp_offset(offset)) >= 0.05):
                         good = False

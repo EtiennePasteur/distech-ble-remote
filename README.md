@@ -99,6 +99,7 @@ Reverse-engineered from the myPersonify Xamarin/.NET app. Controllers advertise 
 - **`reg` equals the byte offset of that value inside the live-state blob**, so the current value of
   any control is read straight from the state characteristic at `[reg]`.
 - Verified registers (cmdId `0x0200`):
+  - room **temperature** — `reg 0x0A`, float °C, read-only (the live measured value)
   - temperature **offset** — `reg 0x0E`, float °C, clamped ±3
   - **fan** — `reg 0x12`; digital map: `Auto = 1.0`, numbered speed *N* = *N* + 2.0
 

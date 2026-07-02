@@ -20,6 +20,14 @@ def test_register_decode_and_offset():
     assert core.fan_of(bytes(blob)) == "1"          # 3.0 -> speed 1
 
 
+def test_temp_of():
+    blob = bytearray(82)
+    struct.pack_into("<f", blob, 10, 21.5)
+    assert abs(core.temp_of(bytes(blob)) - 21.5) < 1e-6
+    struct.pack_into("<f", blob, 10, float("nan"))
+    assert core.temp_of(bytes(blob)) is None         # NaN / unreported -> None
+
+
 def test_fan_map_and_nan():
     for setting, value in core.FAN_SETTING_TO_VALUE.items():
         blob = bytearray(82)

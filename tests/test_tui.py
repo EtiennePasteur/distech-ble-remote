@@ -49,7 +49,7 @@ class Fake:
 
     async def transact(self, addr, *, offset=None, fan=None):
         self.calls.append(("transact", addr, offset, fan))
-        return (offset if offset is not None else -0.5, str(fan) if fan is not None else "1")
+        return (offset if offset is not None else -0.5, str(fan) if fan is not None else "1", 21.5)
 
 
 def dev(addr, name):
@@ -246,6 +246,7 @@ async def test_read_status_key():
         assert transacts[0][2] is None and transacts[0][3] is None   # read-only, no write
         assert d.status == "read ✓"
         assert d.last_read is not None
+        assert d.live_temp == 21.5                   # room temp captured from the read-back
 
 
 async def test_read_status_requires_pairing():

@@ -59,6 +59,7 @@ def resolve_zone() -> str:
 NAME_PREFIX_NARROW = resolve_zone()            # narrow view; set DISTECH_ZONE=NIV1_A1 or "zone" in config.json
 
 CMD_ID = 0x0200                                 # "global" device controls
+REG_TEMP = 0x000A                               # room temp (read-only) -> state byte [10]
 REG_OFFSET = 0x000E                             # setpoint offset  -> state byte [14]
 REG_FAN = 0x0012                                # fan              -> state byte [18]
 
@@ -118,6 +119,12 @@ async def set_offset(client: BleakClient, value: float) -> None:
 
 def offset_of(state: bytes) -> float:
     return read_register(state, REG_OFFSET)
+
+
+def temp_of(state: bytes) -> float | None:
+    """Live room temperature (°C) at byte [10], or None if NaN/unreported."""
+    v = read_register(state, REG_TEMP)
+    return None if v != v else v  # NaN -> None
 
 
 async def set_fan(client: BleakClient, setting: str) -> None:
