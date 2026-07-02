@@ -4,7 +4,7 @@ Control **Distech Controls** AC room controllers from your computer over Bluetoo
 a terminal UI plus a few small CLIs. These are the units the **myPersonify** app drives; this tool
 speaks the same BLE protocol, reverse-engineered for interoperability.
 
-<img width="1609" height="814" alt="distech-ble-remote" src="https://github.com/user-attachments/assets/c11bbb5a-d6f3-4e78-8b15-08a07de3b964" />
+<img width="1564" height="832" alt="distech-ble-remote" src="https://github.com/user-attachments/assets/9253d833-428f-4ce2-a4bd-e11f9d700b90" />
 
 ## ⚠️ Disclaimer
 
