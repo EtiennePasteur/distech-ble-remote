@@ -1,0 +1,7 @@
+bleak>=3.0.0
+dbus-fast>=2.0.0
+textual>=1.0
+
+# dev / tests
+pytest
+pytest-asyncio

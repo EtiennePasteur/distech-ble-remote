@@ -1,0 +1,13 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Reverse-engineering artifacts (third-party APK / decompiled code — not distributed)
+apk/
+tools/
+
+# Local device store (contains pairing codes)
+devices.json
+*.tmp
