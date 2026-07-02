@@ -2,7 +2,7 @@
 """
 Distech Controls BLE Remote — a Textual terminal UI to control Distech Controls AC units over BLE.
 
-  • live-lists nearby controllers by zone (set DISTECH_ZONE; w widens to all NIV*)
+  • live-lists nearby controllers by zone (DISTECH_ZONE env or "zone" in config.json; w widens to all NIV*)
   • tracks bonded/paired state; pairing an unbonded unit prompts for its code
   • local nicknames (persisted), multi-select, and apply offset / fan to all selected
 
@@ -204,7 +204,9 @@ class DistechRemoteApp(App):
     BINDINGS = [
         Binding("space", "select", "select"),
         Binding("p", "pair", "pair"),
-        Binding("r", "rename", "rename"),
+        Binding("n", "rename", "nickname"),
+        Binding("r", "read", "read status"),
+        Binding("R", "read_all", "read all"),
         Binding("minus", "offset_step(-1)", "offset −"),
         Binding("plus", "offset_step(1)", "offset +"),
         Binding("equals_sign", "offset_step(1)", "offset +", show=False),
@@ -276,29 +278,22 @@ class DistechRemoteApp(App):
             self._scanning = True
         except Exception as e:  # noqa: BLE001
             self.notify(f"scan start failed: {e}", severity="error")
-        self._auto_read_all()
 
-    @work(exclusive=True, group="autoread")
-    async def _auto_read_all(self) -> None:
-        """After boot, read the current offset/fan of every in-range bonded unit."""
-        for _ in range(3):                        # a few passes to catch late arrivals
-            await asyncio.sleep(4)
-            await self._read_unread_bonded()
-
-    async def _read_unread_bonded(self) -> None:
+    @work(exclusive=True, group="readall")
+    async def _do_read_all(self) -> None:
+        """Read the current offset/fan of every bonded unit, one at a time."""
         if self._bus is not None:
             await self._refresh_bonds()
         while self._ble_busy:                     # don't fight a user action
             await asyncio.sleep(0.4)
-        now = time.monotonic()
-        targets = [
-            d for d in self.registry.values()
-            if d.bonded and d.last_read is None and not d.is_stale(now, ttl=20)
-        ]
+        targets = [d for d in self.registry.values() if d.bonded]
         if not targets:
+            self.notify("No paired units to read", severity="warning")
             return
         self._ble_busy = True
-        sem = asyncio.Semaphore(3)
+        sem = asyncio.Semaphore(1)      # read one unit at a time; concurrent BLE reads collide
+        for d in targets:               # mark the whole batch as waiting up front
+            d.status = "queued…"
 
         async def read_one(d: Device) -> None:
             async with sem:
@@ -307,7 +302,7 @@ class DistechRemoteApp(App):
                 try:
                     off, fan = await self.backend.transact(d.address)
                     d.live_offset, d.live_fan, d.last_read = off, fan, time.monotonic()
-                    d.status = ""
+                    d.status = "read ✓"
                 except Exception:  # noqa: BLE001
                     d.status = "read failed"
                 finally:
@@ -520,6 +515,14 @@ class DistechRemoteApp(App):
         addr = self._highlighted_address()
         if addr:
             self._do_rename(addr)
+
+    def action_read(self) -> None:
+        addr = self._highlighted_address()
+        if addr:
+            self._do_read(addr)
+
+    def action_read_all(self) -> None:
+        self._do_read_all()
 
     def action_apply_offset(self) -> None:
         self._apply_to_selected(offset=self.staged_offset)

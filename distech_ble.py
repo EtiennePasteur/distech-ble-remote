@@ -38,7 +38,25 @@ STATE_CHARS = ["00020001", "00020002", "00020003"]
 
 ADAPTER = "hci0"
 NAME_PREFIX_BROAD = "NIV"                       # ingest family
-NAME_PREFIX_NARROW = os.environ.get("DISTECH_ZONE", "NIV")  # narrow view; set e.g. DISTECH_ZONE=NIV1_A1
+DEFAULT_ZONE = "NIV"                            # code default when the zone is unset everywhere
+
+
+def resolve_zone() -> str:
+    """Narrow-view zone prefix. Precedence: DISTECH_ZONE env > ~/.config config.json > code default."""
+    env = os.environ.get("DISTECH_ZONE")
+    if env:
+        return env
+    try:
+        import store  # soft, lazy dep: keep the BLE core usable without the config layer
+        zone = store.get_zone()
+        if zone:
+            return zone
+    except Exception:  # noqa: BLE001
+        pass
+    return DEFAULT_ZONE
+
+
+NAME_PREFIX_NARROW = resolve_zone()            # narrow view; set DISTECH_ZONE=NIV1_A1 or "zone" in config.json
 
 CMD_ID = 0x0200                                 # "global" device controls
 REG_OFFSET = 0x000E                             # setpoint offset  -> state byte [14]

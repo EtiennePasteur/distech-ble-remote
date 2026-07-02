@@ -8,6 +8,9 @@ raises — a missing or corrupt file yields an empty store.
 
 The store is just a dict {address: {"nickname":..., "passkey":..., "label":...}}
 that callers mutate through the set_* helpers (which persist immediately).
+
+App-level settings (currently just the "zone") live in a separate, user-editable
+config.json in the same directory. `get_config()`/`get_zone()` never raise.
 """
 from __future__ import annotations
 
@@ -17,6 +20,7 @@ from pathlib import Path
 
 CONFIG_DIR = Path.home() / ".config" / "distech-ble-remote"
 STORE_PATH = CONFIG_DIR / "devices.json"
+CONFIG_PATH = CONFIG_DIR / "config.json"       # app settings (zone, …); separate from the device store
 VERSION = 1
 
 
@@ -37,6 +41,21 @@ def save(devices: dict[str, dict]) -> None:
     tmp.write_text(json.dumps({"version": VERSION, "devices": devices}, indent=2))
     os.chmod(tmp, 0o600)
     os.replace(tmp, STORE_PATH)
+
+
+def get_config() -> dict:
+    """Return the app-settings dict from config.json. Never raises; {} on missing/corrupt file."""
+    try:
+        data = json.loads(CONFIG_PATH.read_text())
+        return data if isinstance(data, dict) else {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def get_zone() -> str | None:
+    """Configured zone (narrow name prefix) from config.json, or None if unset/blank."""
+    zone = get_config().get("zone")
+    return str(zone) if zone else None
 
 
 def _entry(devices: dict[str, dict], addr: str) -> dict:

@@ -49,14 +49,25 @@ python tui.py
 ```
 
 Keys: `↑/↓` or `j/k` move · `space` multi-select · `enter` connect + read · `p` pair (prompts for
-the unit's code) · `r` nickname · `-`/`+` stage offset · `a`/`0-3` stage fan · `o` apply offset ·
-`f` apply fan · `A` apply both · `w` widen to all `NIV*` · `q` quit.
+the unit's code) · `n` nickname · `r` read status (highlighted unit) · `R` read all paired units ·
+`-`/`+` stage offset · `a`/`0-3` stage fan · `o` apply offset · `f` apply fan · `A` apply both ·
+`w` widen to all `NIV*` · `q` quit.
+
+Reads happen **on demand** (`r` / `R` / `enter`), one unit at a time — the app no longer auto-reads
+every unit at startup. While a batch (`R`) runs, units waiting their turn show `queued…`.
 
 The list shows all `NIV*` controllers by default. Set your floor/zone prefix to narrow the default
-view (press `w` to toggle back to everything):
+view (press `w` to toggle back to everything). The zone is resolved by precedence
+**`DISTECH_ZONE` env var → `config.json` → built-in default (`NIV`)**:
 
 ```bash
-DISTECH_ZONE=NIV1_A1 python tui.py   # your own floor+zone prefix
+DISTECH_ZONE=NIV1_A1 python tui.py   # env var wins, for a single run
+```
+
+To set it persistently, add a `zone` to `~/.config/distech-ble-remote/config.json`:
+
+```json
+{ "zone": "NIV1_A1" }
 ```
 
 ### CLIs

@@ -13,6 +13,7 @@ from tui import PasskeyModal, RenameModal, DistechRemoteApp
 def temp_store(tmp_path, monkeypatch):
     monkeypatch.setattr(store, "CONFIG_DIR", tmp_path / "distech-ble-remote")
     monkeypatch.setattr(store, "STORE_PATH", tmp_path / "distech-ble-remote" / "devices.json")
+    monkeypatch.setattr(store, "CONFIG_PATH", tmp_path / "distech-ble-remote" / "config.json")
     monkeypatch.setattr(core, "NAME_PREFIX_NARROW", "NIVA_C1")
     yield
 
@@ -217,7 +218,7 @@ async def test_rename_modal():
         await pilot.pause()
         app._on_advert(dev("AA:01", "NIVA_C1_T01"), adv("NIVA_C1_T01", -45))
         app._redraw()
-        await pilot.press("r")
+        await pilot.press("n")
         await pilot.pause()
         assert isinstance(app.screen, RenameModal)
         app.screen.query_one("#nick", Input).value = "Etienne desk"
@@ -226,3 +227,58 @@ async def test_rename_modal():
             await pilot.pause()
         assert app.registry["AA:01"].nickname == "Etienne desk"
         assert store.get_nickname(app.store, "AA:01") == "Etienne desk"
+
+
+async def test_read_status_key():
+    fake = Fake()
+    app = DistechRemoteApp(backend=fake)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app._on_advert(dev("AA:01", "NIVA_C1_T01"), adv("NIVA_C1_T01", -45))
+        app._redraw()
+        d = app.registry["AA:01"]
+        d.bonded = True
+        await pilot.press("r")                      # read the highlighted unit
+        for _ in range(10):
+            await pilot.pause()
+        transacts = [c for c in fake.calls if c[0] == "transact"]
+        assert [c[1] for c in transacts] == ["AA:01"]
+        assert transacts[0][2] is None and transacts[0][3] is None   # read-only, no write
+        assert d.status == "read ✓"
+        assert d.last_read is not None
+
+
+async def test_read_status_requires_pairing():
+    fake = Fake()
+    app = DistechRemoteApp(backend=fake)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app._on_advert(dev("AA:01", "NIVA_C1_T01"), adv("NIVA_C1_T01", -45))
+        app._redraw()
+        app.registry["AA:01"].bonded = False
+        await pilot.press("r")
+        for _ in range(6):
+            await pilot.pause()
+        assert [c for c in fake.calls if c[0] == "transact"] == []
+
+
+async def test_read_all_reads_every_bonded_unit():
+    fake = Fake()
+    app = DistechRemoteApp(backend=fake)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app._on_advert(dev("AA:01", "NIVA_C1_T01"), adv("NIVA_C1_T01", -45))
+        app._on_advert(dev("AA:02", "NIVA_C1_T02"), adv("NIVA_C1_T02", -60))
+        app._on_advert(dev("AA:03", "NIVA_C1_T03"), adv("NIVA_C1_T03", -70))
+        app._redraw()
+        app.registry["AA:01"].bonded = True         # bonded but NOT selected
+        app.registry["AA:02"].bonded = True         # bonded but NOT selected
+        app.registry["AA:03"].bonded = False        # unpaired -> skipped
+        await pilot.press("R")
+        for _ in range(14):
+            await pilot.pause()
+        transacts = sorted(c[1] for c in fake.calls if c[0] == "transact")
+        assert transacts == ["AA:01", "AA:02"]
+        assert app.registry["AA:01"].status == "read ✓"
+        assert app.registry["AA:02"].status == "read ✓"
+        assert app.registry["AA:03"].status != "read ✓"
