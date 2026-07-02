@@ -238,6 +238,7 @@ class DistechRemoteApp(App):
         self._ble_busy = False
         self._bond_busy = False
         self._rows: set[str] = set()
+        self._order: list[str] = []   # last-applied row order (addresses), for live re-sort
         self._colkeys: list = []
         self.widened = False
         self.staged_offset = 0.0
@@ -397,7 +398,8 @@ class DistechRemoteApp(App):
             if not d.bonded and not d.selected and (now - d.last_seen) > 60:
                 del self.registry[addr]
         visible = [d for d in self.registry.values() if self._passes_filter(d)]
-        visible.sort(key=lambda d: (d.unit_label or d.name or d.address))
+        # bonded first, then alphabetical by the "unit / nickname" column value
+        visible.sort(key=lambda d: (not d.bonded, d.display_name(full=self.widened).lower()))
         self._sync_table(visible, now)
         self._update_panel()
 
@@ -437,6 +439,19 @@ class DistechRemoteApp(App):
             else:
                 table.add_row(*cells, key=d.address)
                 self._rows.add(d.address)
+        # Re-sort the table live whenever `visible`'s order changes — e.g. bond
+        # state resolving after launch, or a rename. update_cell() alone leaves
+        # rows in their original positions, so reorder to match and carry the
+        # cursor along with the device it was on.
+        order = [d.address for d in visible]
+        if order != self._order:
+            self._order = order
+            rank = {addr: i for i, addr in enumerate(order)}
+            keep = self._highlighted_address()
+            addr_col = self._colkeys[8]   # the "address" column holds Text(d.address)
+            table.sort(addr_col, key=lambda cell: rank.get(str(cell), len(rank)))
+            if keep in rank and rank[keep] != table.cursor_row:
+                table.move_cursor(row=rank[keep], scroll=False)
 
     def _update_panel(self) -> None:
         sel = [d for d in self.registry.values() if d.selected]
@@ -635,7 +650,9 @@ class DistechRemoteApp(App):
             return
         self._ble_busy = True
         counters = {"ok": 0, "fail": 0}
-        sem = asyncio.Semaphore(3)
+        sem = asyncio.Semaphore(1)      # write one unit at a time; concurrent BLE writes collide
+        for d in bonded:                # mark the whole batch as waiting up front
+            d.status = "queued…"
 
         async def apply_one(d: Device) -> None:
             async with sem:

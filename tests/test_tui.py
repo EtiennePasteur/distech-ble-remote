@@ -263,6 +263,51 @@ async def test_read_status_requires_pairing():
         assert [c for c in fake.calls if c[0] == "transact"] == []
 
 
+def _row_order(app):
+    table = app.query_one(DataTable)
+    return [row.key.value for row in table.ordered_rows]
+
+
+async def test_sort_is_bonded_first_then_alphabetical():
+    app = DistechRemoteApp(backend=Fake())
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app._on_advert(dev("AA:03", "NIVA_C1_T03"), adv("NIVA_C1_T03", -45))
+        app._on_advert(dev("AA:01", "NIVA_C1_T01"), adv("NIVA_C1_T01", -60))
+        app._on_advert(dev("AA:02", "NIVA_C1_T02"), adv("NIVA_C1_T02", -70))
+        app._redraw()
+        # no bonds yet: pure alphabetical by unit / nickname
+        assert _row_order(app) == ["AA:01", "AA:02", "AA:03"]
+
+        # bond state resolves after launch -> the bonded unit floats to the top
+        app.registry["AA:03"].bonded = True
+        app._redraw()
+        assert _row_order(app) == ["AA:03", "AA:01", "AA:02"]
+
+        # nickname is a suffix on the unit-first column value ("T01 - Zebra"),
+        # so it never reorders distinct units — order stays unit-first, live.
+        app.registry["AA:01"].nickname = "Zebra"
+        app._redraw()
+        assert _row_order(app) == ["AA:03", "AA:01", "AA:02"]
+
+
+async def test_cursor_follows_device_across_resort():
+    app = DistechRemoteApp(backend=Fake())
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app._on_advert(dev("AA:01", "NIVA_C1_T01"), adv("NIVA_C1_T01", -45))
+        app._on_advert(dev("AA:02", "NIVA_C1_T02"), adv("NIVA_C1_T02", -60))
+        app._redraw()
+        table = app.query_one(DataTable)
+        table.move_cursor(row=1)                     # highlight T02 (AA:02)
+        assert app._highlighted_address() == "AA:02"
+        # AA:02 becomes bonded and jumps to the top; the cursor should ride along
+        app.registry["AA:02"].bonded = True
+        app._redraw()
+        assert _row_order(app) == ["AA:02", "AA:01"]
+        assert app._highlighted_address() == "AA:02"
+
+
 async def test_read_all_reads_every_bonded_unit():
     fake = Fake()
     app = DistechRemoteApp(backend=fake)
