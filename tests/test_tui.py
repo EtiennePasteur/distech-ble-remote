@@ -178,6 +178,33 @@ async def test_pair_modal_wrong_code():
         assert store.get_passkey(app.store, "AA:01") is None
 
 
+class MacFake(Fake):
+    """macOS-style backend: the passkey is entered in the OS dialog, not injected."""
+    supports_passkey_injection = False
+
+
+async def test_pair_modal_macos_no_injection():
+    # On macOS the code goes into the system dialog; the pair flow must still complete
+    # (exercises the `supports_passkey_injection is False` branch in _do_pair).
+    fake = MacFake()
+    app = DistechRemoteApp(backend=fake)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await _wait_bus(app, pilot)
+        app._on_advert(dev("AA:01", "NIVA_C1_T01"), adv("NIVA_C1_T01", -45))
+        app._redraw()
+        await pilot.press("p")
+        await pilot.pause()
+        assert isinstance(app.screen, PasskeyModal)
+        app.screen.query_one("#pk", Input).value = "123456"
+        await pilot.press("enter")
+        for _ in range(12):
+            await pilot.pause()
+        d = app.registry["AA:01"]
+        assert d.bonded is True, d.status
+        assert ("pair", "AA:01", 123456) in fake.calls
+
+
 async def test_display_name_keeps_unit():
     app = DistechRemoteApp(backend=Fake())
     async with app.run_test() as pilot:

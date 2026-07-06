@@ -1,6 +1,13 @@
 bleak>=3.0.0
-dbus-fast>=2.0.0
 textual>=1.0
+
+# Linux only: BlueZ passkey pairing + bond-state over D-Bus.
+dbus-fast>=2.0.0; sys_platform == "linux"
+
+# Windows only: WinRT DeviceInformationCustomPairing (ProvidePin) for passkey pairing.
+# bleak already pulls the winrt-* projections on Windows; declared explicitly for clarity.
+winrt-Windows.Devices.Enumeration; sys_platform == "win32"
+winrt-Windows.Devices.Bluetooth; sys_platform == "win32"
 
 # dev / tests
 pytest

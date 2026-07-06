@@ -27,12 +27,19 @@ speaks the same BLE protocol, reverse-engineered for interoperability.
 
 ## Requirements
 
-- **Linux with BlueZ** (developed on Ubuntu; also works in WSL2 with a passed-through adapter).
-  Pairing and bond-state use BlueZ over D-Bus, so those parts are Linux-only.
-- Python 3.10+
+- **Python 3.10+**, and a Bluetooth LE adapter.
+- Runs natively on **Linux** (BlueZ), **Windows** (WinRT) and **macOS** (CoreBluetooth) — all BLE
+  goes through [bleak](https://github.com/hbldh/bleak), which is cross-platform.
 
-The BLE control itself uses [bleak](https://github.com/hbldh/bleak), which is cross-platform; on
-Windows/macOS you would pair the unit through the OS first, then the read/offset/fan commands work.
+Pairing is the one platform-specific piece (handled in `pairing.py`):
+
+- **Linux / BlueZ** (developed on Ubuntu; also works in WSL2 with a passed-through adapter) —
+  passkey pairing + bond-state over D-Bus (`dbus-fast`); the code is injected automatically.
+- **Windows / WinRT** — passkey pairing via `DeviceInformationCustomPairing` (ProvidePin); the code
+  is injected automatically. `pip install -r requirements.txt` pulls the needed `winrt-*` packages.
+- **macOS / CoreBluetooth** — the passkey **cannot** be injected from code (an Apple restriction).
+  The first time you pair (or read/write) a unit, **macOS shows its own passkey dialog** — type the
+  unit's code there once, and the OS remembers the bond. The bonded column is best-effort on macOS.
 
 ## Install
 

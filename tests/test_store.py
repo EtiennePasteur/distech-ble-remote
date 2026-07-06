@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 
@@ -32,8 +33,9 @@ def test_round_trip_and_mode():
     reloaded = store.load()
     assert reloaded["AA:BB"]["nickname"] == "Desk"
     assert reloaded["AA:BB"]["passkey"] == 123456
-    # passkeys are secret-ish -> file must be 0600
-    assert (store.STORE_PATH.stat().st_mode & 0o777) == 0o600
+    # passkeys are secret-ish -> file must be 0600 (POSIX perms; not enforced on Windows)
+    if os.name == "posix":
+        assert (store.STORE_PATH.stat().st_mode & 0o777) == 0o600
 
 
 def test_clear_nickname():

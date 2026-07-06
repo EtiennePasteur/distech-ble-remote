@@ -16,9 +16,21 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 
-CONFIG_DIR = Path.home() / ".config" / "distech-ble-remote"
+
+def _config_dir() -> Path:
+    """Per-user config directory. Windows: %APPDATA%\\distech-ble-remote;
+    macOS/Linux: ~/.config/distech-ble-remote."""
+    if sys.platform == "win32":
+        base = os.environ.get("APPDATA")
+        if base:
+            return Path(base) / "distech-ble-remote"
+    return Path.home() / ".config" / "distech-ble-remote"
+
+
+CONFIG_DIR = _config_dir()
 STORE_PATH = CONFIG_DIR / "devices.json"
 CONFIG_PATH = CONFIG_DIR / "config.json"       # app settings (zone, …); separate from the device store
 VERSION = 1
@@ -39,7 +51,10 @@ def save(devices: dict[str, dict]) -> None:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     tmp = STORE_PATH.with_name(STORE_PATH.name + ".tmp")
     tmp.write_text(json.dumps({"version": VERSION, "devices": devices}, indent=2))
-    os.chmod(tmp, 0o600)
+    try:
+        os.chmod(tmp, 0o600)  # POSIX perms; on Windows this only toggles the read-only bit
+    except OSError:
+        pass
     os.replace(tmp, STORE_PATH)
 
 

@@ -29,22 +29,33 @@ from textual.widgets import Button, DataTable, Footer, Header, Input, Label, Sta
 
 import store
 import distech_ble as core
+import pairing
 
 # --------------------------------------------------------------------------- #
 # backend seam (real BLE by default; a fake can be injected for tests)
 # --------------------------------------------------------------------------- #
 class RealBackend:
+    def __init__(self):
+        # Platform-specific pairing/bond-state backend (BlueZ / WinRT / CoreBluetooth).
+        self.pairing = pairing.get_pairing_backend()
+
+    @property
+    def supports_passkey_injection(self) -> bool:
+        return self.pairing.supports_passkey_injection
+
     def make_scanner(self, callback):
         return core.make_scanner(callback)
 
     async def get_bus(self):
-        return await core.get_system_bus()
+        # Returns an opaque handle (dbus bus on Linux, a sentinel elsewhere). The TUI
+        # only uses its truthiness to gate pairing/bond-state; it never inspects it.
+        return await self.pairing.open()
 
     async def bond_state(self, bus):
-        return await core.bonded_and_connected(bus)
+        return await self.pairing.bond_state()
 
     async def pair(self, address, passkey, bus):
-        return await core.pair_device(address, passkey, bus=bus)
+        return await self.pairing.pair(address, passkey)
 
     async def transact(self, address, *, offset=None, fan=None):
         """Connect once; optionally write offset/fan; always read back (offset, fan, temp)."""
@@ -272,7 +283,7 @@ class DistechRemoteApp(App):
             self._bus = await self.backend.get_bus()
         except Exception:  # noqa: BLE001
             self._bus = None
-            self.notify("BlueZ dbus unavailable — pairing/bond-state off", severity="warning")
+            self.notify("Pairing/bond-state unavailable on this system", severity="warning")
         if self._bus is not None:
             await self._refresh_bonds()
         try:
@@ -564,7 +575,7 @@ class DistechRemoteApp(App):
             self.notify("Already bonded")
             return
         if self._bus is None:
-            self.notify("Pairing needs BlueZ dbus (unavailable)", severity="error")
+            self.notify("Pairing unavailable on this system", severity="error")
             return
         default = store.get_passkey(self.store, addr)
         passkey = await self.push_screen_wait(PasskeyModal(d.display_name() if d else addr, default))
@@ -573,6 +584,9 @@ class DistechRemoteApp(App):
         if self._ble_busy:
             self.notify("Busy — another action is running")
             return
+        # macOS can't inject the code — the OS shows its own dialog; tell the user.
+        if not getattr(self.backend, "supports_passkey_injection", True):
+            self.notify(f"Enter {passkey:04d} in the macOS system dialog when it appears", timeout=12)
         self._ble_busy = True
         if d:
             d.busy = True
